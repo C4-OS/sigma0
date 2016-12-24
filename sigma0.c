@@ -12,13 +12,13 @@ struct foo {
 
 // external binaries linked into the image
 // forth initial commands file
-extern char _binary_sigma0_init_commands_fs_start[];
-extern char _binary_sigma0_init_commands_fs_end[];
+extern char _binary_init_commands_fs_start[];
+extern char _binary_init_commands_fs_end[];
 // tar
-extern char _binary_sigma0_initfs_tar_start[];
-extern char _binary_sigma0_initfs_tar_end[];
+extern char _binary_initfs_tar_start[];
+extern char _binary_initfs_tar_end[];
 
-static tar_header_t *tar_initfs = (void *)_binary_sigma0_initfs_tar_start;
+static tar_header_t *tar_initfs = (void *)_binary_initfs_tar_start;
 
 void test_thread( void *unused );
 void forth_thread( void *sysinfo );
@@ -240,10 +240,10 @@ char minift_get_char( void ){
 	static char *ptr;
 
 	if ( !initialized ){
-		*(_binary_sigma0_init_commands_fs_end - 1) = 0;
+		*(_binary_init_commands_fs_end - 1) = 0;
 
 		for ( unsigned i = 0; i < sizeof(input); i++ ){ input[i] = 0; }
-		ptr         = _binary_sigma0_init_commands_fs_start;
+		ptr         = _binary_init_commands_fs_start;
 		initialized = true;
 	}
 
