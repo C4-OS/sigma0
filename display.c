@@ -45,6 +45,7 @@ static inline void do_newline( vga_state_t *state ){
 }
 
 void display_thread( void *unused ){
+	static const uint8_t color = 0x9f;
 	message_t msg;
 
 	vga_state_t state = {
@@ -58,7 +59,7 @@ void display_thread( void *unused ){
 
 	for ( unsigned i = 0; i < WIDTH * HEIGHT; i++ ){
 		state.textbuf[i].text = ' ';
-		state.textbuf[i].color = 0;
+		state.textbuf[i].color = color;
 	}
 
 	while ( true ){
@@ -79,7 +80,7 @@ void display_thread( void *unused ){
 			vga_char_t *temp = state.textbuf + WIDTH * state.y + state.x;
 
 			temp->text  = c;
-			temp->color = 0x7;
+			temp->color = color;
 
 			if ( state.x++ >= WIDTH ){
 				do_newline( &state );

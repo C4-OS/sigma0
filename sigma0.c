@@ -478,7 +478,6 @@ static bool c4_minift_sendmsg( minift_vm_t *vm ){
 		return false;
 	}
 
-	debug_print( forth_sysinfo, "got to sendmsg\n" );
 	c4_msg_send( msg, target );
 
 	return true;
@@ -493,7 +492,6 @@ static bool c4_minift_recvmsg( minift_vm_t *vm ){
 		return false;
 	}
 
-	debug_print( forth_sysinfo, "got to recvmsg\n" );
 	c4_msg_recieve( msg, 0 );
 
 	return true;

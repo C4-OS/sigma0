@@ -69,8 +69,10 @@ make-msgbuf buffer
   "  print-archives  : list available base words" print-string cr
   "  help            : print this help" print-string cr
   "  meminfo         : print the amount of memory available" print-string cr
-  "  stop | continue : stop or continue the given thread id" print-string cr
   "  dumpmaps        : dump memory maps for the given thread" print-string cr
+
+  "  [addr] [len] /x : interactive hex dump of [len] words at [addr]" print-string cr
+  "    [id] continue : continue thread [id]" print-string cr
 ;
 
 : initfs-print ( name -- )
@@ -115,6 +117,73 @@ list-start value [[
     "./bin/keyboard"
     "./bin/test"
   ]] exec-list
+;
+
+( Hex dumper definitions )
+: hex-len ( n -- len )
+  if dup 0 = then drop 1 end
+
+  0 swap while dup 0 > begin
+    0x10 /
+    swap 1 + swap
+  repeat drop
+;
+
+: hex-pad ( n -- )
+  hex-len 8 swap - while dup 0 > begin
+    0x30 emit
+    1 -
+  repeat drop
+;
+
+: /x-hex-label swap dup hex-pad .x swap 0x20 0x3a emit emit ;
+: /x-key       buffer recvmsg ;
+
+: /x-emitchars ( addr -- )
+  0 while dup 16 < begin
+    swap
+      if dup c@ 0x19 > then
+        dup c@ emit
+      else
+        0x2e emit
+      end
+      1 +
+    swap
+    1 +
+  repeat drop drop
+;
+
+: /x-chars
+  0x7c emit over 4 cells - /x-emitchars 0x7c emit
+;
+
+: /x ( addr n -- )
+  /x-hex-label
+
+  while dup 0 > begin
+    swap
+      dup @ dup hex-pad .x drop
+      1 cells +
+    swap
+
+    0x20 emit
+    1 -
+
+    if dup 96 mod 0 = then
+      /x-chars
+      cr 0x3a emit
+      /x-key
+      /x-hex-label
+
+    else if dup 4 mod 0 = then
+      /x-chars
+      cr
+      /x-hex-label
+    end
+    end
+
+  repeat
+  drop drop
 ;
 
 bootstrap
