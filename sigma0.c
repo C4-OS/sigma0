@@ -20,6 +20,8 @@ extern char _binary_initfs_tar_end[];
 
 static tar_header_t *tar_initfs = (void *)_binary_initfs_tar_start;
 
+int c4_set_pager( unsigned thread, unsigned pager );
+
 void test_thread( void *unused );
 void forth_thread( void *sysinfo );
 void debug_print( struct foo *info, char *asdf );
@@ -40,6 +42,9 @@ void main( void ){
 	s = stack_push( s, (unsigned)&thing );
 
 	thing.forth = c4_create_thread( forth_thread, s, 0 );
+
+	c4_set_pager( thing.display, 1 );
+	c4_set_pager( thing.forth, 1 );
 
 	c4_continue_thread( thing.display );
 	c4_continue_thread( thing.forth );
@@ -117,6 +122,7 @@ int elf_load( Elf32_Ehdr *elf, int display ){
 		                 PAGE_READ | PAGE_WRITE );
 	}
 
+	c4_set_pager( thread_id, 1 );
 	c4_continue_thread( thread_id );
 
 	return 0;
@@ -136,6 +142,14 @@ void test_thread( void *data ){
 
 extern const char *foo;
 
+static inline bool is_page_fault( const message_t *msg ){
+	return msg->type == MESSAGE_TYPE_PAGE_FAULT;
+}
+
+static inline bool is_keystroke( const message_t *msg ){
+	return msg->type == 0xbeef;
+}
+
 void server( void *data ){
 	message_t msg;
 	struct foo *meh = data;
@@ -143,17 +157,25 @@ void server( void *data ){
 	while ( true ){
 		c4_msg_recieve( &msg, 0 );
 
-		char c = decode_scancode( msg.data[0] );
+		if ( is_page_fault( &msg )){
+			debug_print( meh, "got a page fault message, eh\n" );
 
-		if ( c && msg.data[1] == 0 ){
-			if ( c ){
-				message_t keycode;
-				keycode.type    = 0xbabe;
-				keycode.data[0] = c;
+		} else if ( is_keystroke( &msg )){
+			char c = decode_scancode( msg.data[0] );
 
-				c4_msg_send( &keycode, meh->display );
-				c4_msg_send( &keycode, meh->forth );
+			if ( c && msg.data[1] == 0 ){
+				if ( c ){
+					message_t keycode;
+					keycode.type    = 0xbabe;
+					keycode.data[0] = c;
+
+					c4_msg_send( &keycode, meh->display );
+					c4_msg_send( &keycode, meh->forth );
+				}
 			}
+
+		} else {
+			debug_print( meh, "sigma0: got an unknown message, ignoring\n" );
 		}
 	}
 
@@ -375,6 +397,15 @@ int c4_create_thread( void *entry, void *stack, unsigned flags ){
 
 int c4_continue_thread( unsigned thread ){
 	message_t buf = { .type = MESSAGE_TYPE_CONTINUE, };
+
+	return c4_msg_send( &buf, thread );
+}
+
+int c4_set_pager( unsigned thread, unsigned pager ){
+	message_t buf = {
+		.type = MESSAGE_TYPE_SET_PAGER,
+		.data = { pager },
+	};
 
 	return c4_msg_send( &buf, thread );
 }
