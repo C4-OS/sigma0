@@ -27,12 +27,17 @@ void forth_thread( void *sysinfo );
 void debug_print( struct foo *info, char *asdf );
 int  elf_load( Elf32_Ehdr *elf, int display );
 
+static void  bss_init( void );
 static void *allot_pages( unsigned pages );
 static void *allot_stack( unsigned pages );
 static void *stack_push( unsigned *stack, unsigned foo );
 
 void main( void ){
 	struct foo thing;
+
+	// set the memory in bss to zero, which is needed since this loaded
+	// as a flat binary
+	bss_init( );
 
 	unsigned *s = allot_stack( 1 );
 	s -= 1;
@@ -54,6 +59,15 @@ void main( void ){
 	// TODO: panic or dump debug info or something, server()
 	//       should never return
 	for ( ;; );
+}
+
+static void bss_init( void ){
+	extern uint8_t *bss_start;
+	extern uint8_t *bss_end;
+
+	for ( uint8_t *ptr = bss_start; ptr < bss_end; ptr++ ){
+		*ptr = 0;
+	}
 }
 
 static void *allot_pages( unsigned pages ){
