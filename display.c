@@ -45,7 +45,7 @@ static inline void do_newline( vga_state_t *state ){
 }
 
 void display_thread( void *unused ){
-	static const uint8_t color = 0x9f;
+	static const uint8_t color = 0x17;
 	message_t msg;
 
 	vga_state_t state = {
