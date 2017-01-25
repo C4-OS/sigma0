@@ -5,6 +5,10 @@
   repeat drop
 ;
 
+: puts ( addr -- )
+  print-string cr
+;
+
 : hex ( n -- )
   "0x" print-string .x cr drop
 ;
@@ -64,15 +68,22 @@ make-msgbuf buffer
 : dumpmaps dumpmaps-msg do-send ;
 : ping     1234         do-send ;
 
-: help
-  "some things you can do:" print-string cr
-  "  print-archives  : list available base words" print-string cr
-  "  help            : print this help" print-string cr
-  "  meminfo         : print the amount of memory available" print-string cr
-  "  dumpmaps        : dump memory maps for the given thread" print-string cr
+0xffffbeef value list-start
+list-start value [[
+: ]] ;
 
-  "  [addr] [len] /x : interactive hex dump of [len] words at [addr]" print-string cr
-  "    [id] continue : continue thread [id]" print-string cr
+: help
+  [[
+    "  [filename] exec : load the elf from [filename] in the initfs and run it"
+    "  [addr] [len] /x : interactive hex dump of [len] words at [addr]"
+    "  [id] continue   : continue thread [id]"
+    "  [id] dumpmaps   : dump memory maps for the given thread [id] over debug"
+    "  meminfo         : display the amount of forth memory available"
+    "  memmaps         : display memory maps for the current address space"
+    "  print-archives  : list available base words"
+    "  ls              : list files contained in the initfs"
+    "  help            : print this help"
+  ]] puts-list
 ;
 
 : initfs-print ( name -- )
@@ -81,9 +92,11 @@ make-msgbuf buffer
   "addr: " print-string hex cr
 ;
 
-0xffffbeef value list-start
-list-start value [[
-: ]] ;
+: puts-list
+  while dup list-start != begin
+    puts
+  repeat
+;
 
 : dumpmaps-list
   while dup list-start != begin
@@ -129,8 +142,8 @@ list-start value [[
   repeat drop
 ;
 
-: hex-pad ( n -- )
-  hex-len 8 swap - while dup 0 > begin
+: hex-pad ( n -- n )
+  dup hex-len 8 swap - while dup 0 > begin
     0x30 emit
     1 -
   repeat drop
@@ -162,7 +175,7 @@ list-start value [[
 
   while dup 0 > begin
     swap
-      dup @ dup hex-pad .x drop
+      dup @ hex-pad .x drop
       1 cells +
     swap
 
@@ -184,6 +197,21 @@ list-start value [[
 
   repeat
   drop drop
+;
+
+: space 0x20 emit ;
+
+: memmaps ( -- )
+  0xfcffe010 while dup @ 0 != begin
+    dup @ hex-pad .x drop space 1 cells +
+    " -> " print-string
+    dup @ hex-pad .x drop space 1 cells +
+    ", " print-string
+    dup @ . drop space 1 cells +
+    "pages" print-string
+    cr
+    1 cells +
+  repeat drop
 ;
 
 bootstrap
