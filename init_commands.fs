@@ -1,4 +1,4 @@
-: print-string ( addr -- )
+: print ( addr -- )
   while dup c@ 0 != begin
       dup c@ emit
       1 +
@@ -6,22 +6,22 @@
 ;
 
 : puts ( addr -- )
-  print-string cr
+  print cr
 ;
 
 : hex ( n -- )
-  "0x" print-string .x cr drop
+  "0x" print .x cr drop
 ;
 
 : print-memfield ( n name -- )
-  print-string ": " print-string . " cells (" print-string
-  cells .  " bytes)" print-string
+  print ": " print . " cells (" print
+  cells .  " bytes)" print
   cr drop
 ;
 
 : meminfo
   push-meminfo
-  "available memory:" print-string cr
+  "available memory:" print cr
   "     calls" print-memfield
   "parameters" print-memfield
   "      data" print-memfield
@@ -52,10 +52,10 @@ make-msgbuf buffer
 : msgtest
   buffer recvmsg
   if buffer is-keycode? then
-      "got a keypress: " print-string
+      "got a keypress: " print
       buffer get-keycode . cr drop
   else
-      "got message with type " print-string
+      "got message with type " print
       buffer get-type . cr drop
   end
 ;
@@ -88,8 +88,8 @@ list-start value [[
 
 : initfs-print ( name -- )
   tarfind dup tarsize
-  "size: " print-string .   cr drop
-  "addr: " print-string hex cr
+  "size: " print .   cr drop
+  "addr: " print hex cr
 ;
 
 : puts-list
@@ -107,13 +107,13 @@ list-start value [[
 : ls ( -- )
   "/" tarfind
   while dup c@ 0 != begin
-    dup print-string cr
+    dup print cr
     tarnext
   repeat
 ;
 
 : exec ( program-path -- )
-  "loading elf executable: " print-string dup print-string cr
+  "loading elf executable: " print dup print cr
   tarfind elfload drop
 ;
 
@@ -149,7 +149,7 @@ list-start value [[
   repeat drop
 ;
 
-: /x-hex-label swap dup hex-pad .x swap 0x20 0x3a emit emit ;
+: /x-hex-label swap hex-pad .x swap 0x20 0x3a emit emit ;
 : /x-key       buffer recvmsg ;
 
 : /x-emitchars ( addr -- )
@@ -186,7 +186,10 @@ list-start value [[
       /x-chars
       cr 0x3a emit
       /x-key
-      /x-hex-label
+
+      if dup 0 != then
+        /x-hex-label
+      end
 
     else if dup 4 mod 0 = then
       /x-chars
@@ -200,22 +203,20 @@ list-start value [[
 ;
 
 : space 0x20 emit ;
+: mem-p dup @ hex-pad .x drop 1 cells + ;
 
 : memmaps ( -- )
   0xfcffe010 while dup @ 0 != begin
-    dup @ hex-pad .x drop space 1 cells +
-    " -> " print-string
-    dup @ hex-pad .x drop space 1 cells +
-    ", " print-string
+    mem-p " -> " print mem-p ", " print
     dup @ . drop space 1 cells +
-    "pages" print-string
+    "pages" print
     cr
     1 cells +
   repeat drop
 ;
 
 bootstrap
-"All systems are go, good luck" print-string cr
+"All systems are go, good luck" print cr
 
 ( XXX : newline needed at the end of the file because the init routine )
 (       sets the last byte of the file to 0 )
