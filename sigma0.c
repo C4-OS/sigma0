@@ -3,12 +3,15 @@
 #include <sigma0/elf.h>
 #include <miniforth/miniforth.h>
 #include <c4/thread.h>
+#include <c4/bootinfo.h>
 
 struct foo {
 	int target;
 	int display;
 	int forth;
 };
+
+static bootinfo_t *c4_bootinfo = (void *)0xfcfff000;
 
 // external binaries linked into the image
 // forth initial commands file
@@ -38,6 +41,28 @@ void main( void ){
 	// set the memory in bss to zero, which is needed since this loaded
 	// as a flat binary
 	bss_init( );
+
+	if ( c4_bootinfo->framebuffer.exists ){
+		unsigned size =
+			c4_bootinfo->framebuffer.width *
+			c4_bootinfo->framebuffer.height *
+			4;
+
+		c4_request_physical( 0xfb000000,
+		                     c4_bootinfo->framebuffer.addr,
+		                     size / PAGE_SIZE + 1,
+		                     PAGE_READ | PAGE_WRITE );
+
+		uint32_t *fb = (void *)0xfb000000;
+
+		for ( unsigned x = 0; x < c4_bootinfo->framebuffer.width; x++ ){
+			for ( unsigned y = 0; y < c4_bootinfo->framebuffer.height; y++ ){
+				unsigned index = y * c4_bootinfo->framebuffer.width + x;
+
+				fb[index] = ((y & 0xff) << 16) | ((x & 0xff) << 8) | x ^ y;
+			}
+		}
+	}
 
 	unsigned *s = allot_stack( 1 );
 	s -= 1;
