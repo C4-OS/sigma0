@@ -129,6 +129,10 @@ list-start value [[
   [[
     "./bin/keyboard"
     "./bin/test"
+
+    ( programs in this list are started in reverse order, )
+    ( so this will need to stay at the bottom of the list )
+    "./bin/nameserver"
   ]] exec-list
 ;
 

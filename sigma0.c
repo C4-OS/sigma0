@@ -55,8 +55,8 @@ void main( void ){
 
 		uint32_t *fb = (void *)0xfb000000;
 
-		for ( unsigned x = 0; x < c4_bootinfo->framebuffer.width; x++ ){
-			for ( unsigned y = 0; y < c4_bootinfo->framebuffer.height; y++ ){
+		for ( unsigned y = 0; y < c4_bootinfo->framebuffer.height; y++ ){
+			for ( unsigned x = 0; x < c4_bootinfo->framebuffer.width; x++ ){
 				unsigned index = y * c4_bootinfo->framebuffer.width + x;
 
 				fb[index] = ((y & 0xff) << 16) | ((x & 0xff) << 8) | x ^ y;
@@ -199,20 +199,6 @@ void server( void *data ){
 		if ( is_page_fault( &msg )){
 			debug_print( meh, "got a page fault message, eh\n" );
 
-		} else if ( is_keystroke( &msg )){
-			char c = decode_scancode( msg.data[0] );
-
-			if ( c && msg.data[1] == 0 ){
-				if ( c ){
-					message_t keycode;
-					keycode.type    = 0xbabe;
-					keycode.data[0] = c;
-
-					c4_msg_send( &keycode, meh->display );
-					c4_msg_send( &keycode, meh->forth );
-				}
-			}
-
 		} else {
 			debug_print( meh, "sigma0: got an unknown message, ignoring\n" );
 		}
@@ -267,6 +253,36 @@ char decode_scancode( unsigned long code ){
 	return ret;
 }
 
+enum {
+	NAME_BIND = 0x1024,
+	NAME_UNBIND,
+	NAME_LOOKUP,
+	NAME_RESULT,
+};
+
+unsigned hash_string( const char *str ){
+	unsigned hash = 757;
+	int c;
+
+	while (( c = *str++ )){
+		hash = ((hash << 7) + hash + c);
+	}
+
+	return hash;
+}
+
+static inline unsigned nameserver_lookup( unsigned server, unsigned long name ){
+	message_t msg = {
+		.type = NAME_LOOKUP,
+		.data = { name },
+	};
+
+	c4_msg_send( &msg, server );
+	c4_msg_recieve( &msg, server );
+
+	return msg.data[0];
+}
+
 static struct foo *forth_sysinfo;
 
 static char *read_line( char *buf, unsigned n ){
@@ -274,9 +290,37 @@ static char *read_line( char *buf, unsigned n ){
 	unsigned i = 0;
 
 	for ( i = 0; i < n - 1; i++ ){
+		char c = 0;
 retry:
-		c4_msg_recieve( &msg, 0 );
-		char c = msg.data[0];
+		{
+			// XXX: this relies on the /bin/keyboard program being started,
+			//      which itself is initialized by the forth interpreter,
+			//      so this assumes that the program will be started by the
+			//      init_commands.fs script before entering interactive mode
+			static unsigned keyboard_thread = 0;
+
+			if ( !keyboard_thread ){
+				keyboard_thread =
+					nameserver_lookup( 5, hash_string( "/dev/keyboard" ));
+				goto retry;
+			}
+
+			msg.type = 0xbadbeef;
+			c4_msg_send( &msg, keyboard_thread );
+			c4_msg_recieve( &msg, keyboard_thread );
+
+			c = decode_scancode( msg.data[0] );
+
+			if ( c && msg.data[1] == 0 ){
+				msg.type    = 0xbabe;
+				msg.data[0] = c;
+
+			} else {
+				goto retry;
+			}
+		}
+
+		c4_msg_send( &msg, forth_sysinfo->display );
 
 		if ( i && c == '\b' ){
 			i--;
@@ -580,7 +624,7 @@ static bool c4_minift_elfload( minift_vm_t *vm ){
 	void *data = tar_data( temp );
 	// TODO: change this once a generic structure for passing info to new
 	//       threads is implemented
-	int id = elf_load( data, 1 );
+	int id = elf_load( data, 5 );
 
 	minift_push( vm, &vm->param_stack, id );
 	return true;
