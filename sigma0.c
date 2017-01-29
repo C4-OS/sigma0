@@ -9,6 +9,7 @@ struct foo {
 	int target;
 	int display;
 	int forth;
+	int nameserver;
 };
 
 static bootinfo_t *c4_bootinfo = (void *)0xfcfff000;
@@ -29,7 +30,8 @@ void test_thread( void *unused );
 void forth_thread( void *sysinfo );
 void debug_putchar( char c );
 void debug_print( struct foo *info, char *asdf );
-int  elf_load( Elf32_Ehdr *elf, int display );
+int  elf_load( Elf32_Ehdr *elf, int nameserver );
+int  elf_load_file( const char *name, int nameserver );
 
 static void  bss_init( void );
 static void *allot_pages( unsigned pages );
@@ -80,6 +82,9 @@ void main( void ){
 	c4_continue_thread( thing.display );
 	c4_continue_thread( thing.forth );
 
+	elf_load_file( "./bin/nameserver", 3 );
+	elf_load_file( "./bin/pci", 3 );
+
 	server( &thing );
 
 	// TODO: panic or dump debug info or something, server()
@@ -129,7 +134,7 @@ static inline void elf_load_set_arg( uint8_t *stack,
 
 static struct foo *forth_sysinfo;
 
-int elf_load( Elf32_Ehdr *elf, int display ){
+int elf_load( Elf32_Ehdr *elf, int nameserver ){
 	unsigned stack_offset = 0xff8;
 
 	void *entry      = (void *)elf->e_entry;
@@ -138,7 +143,7 @@ int elf_load( Elf32_Ehdr *elf, int display ){
 	void *stack      = (uint8_t *)to_stack + stack_offset;
 
 	// copy the output info to the new stack
-	elf_load_set_arg( from_stack, stack_offset, 0, display );
+	elf_load_set_arg( from_stack, stack_offset, 0, nameserver );
 
 	int thread_id = c4_create_thread( entry, stack,
 	                                  THREAD_CREATE_FLAG_NEWMAP);
@@ -169,6 +174,19 @@ int elf_load( Elf32_Ehdr *elf, int display ){
 	c4_continue_thread( thread_id );
 
 	return 0;
+}
+
+int elf_load_file( const char *name, int nameserver ){
+	int ret = -1;
+	tar_header_t *lookup = tar_lookup( tar_initfs, name );
+
+	if ( lookup ){
+		void *data = tar_data( lookup );
+
+		ret = elf_load( data, nameserver );
+	}
+
+	return ret;
 }
 
 void test_thread( void *data ){
