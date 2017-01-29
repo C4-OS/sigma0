@@ -27,6 +27,7 @@ int c4_set_pager( unsigned thread, unsigned pager );
 
 void test_thread( void *unused );
 void forth_thread( void *sysinfo );
+void debug_putchar( char c );
 void debug_print( struct foo *info, char *asdf );
 int  elf_load( Elf32_Ehdr *elf, int display );
 
@@ -354,7 +355,7 @@ char minift_get_char( void ){
 	}
 
 	while ( !*ptr ){
-		debug_print( forth_sysinfo, "miniforth > " );
+		//debug_print( forth_sysinfo, "miniforth > " );
 		ptr = read_line( input, sizeof( input ));
 	}
 
@@ -362,12 +363,15 @@ char minift_get_char( void ){
 }
 
 void minift_put_char( char c ){
+	/*
 	message_t msg;
 
 	msg.type    = 0xbabe;
 	msg.data[0] = c;
 
 	c4_msg_send( &msg, forth_sysinfo->display );
+	*/
+	debug_putchar( c );
 }
 
 static bool c4_minift_sendmsg( minift_vm_t *vm );
@@ -428,15 +432,25 @@ void forth_thread( void *sysinfo ){
 	}
 }
 
-void debug_print( struct foo *info, char *str ){
+void debug_putchar( char c ){
 	message_t msg;
 
-	for ( unsigned i = 0; str[i]; i++ ){
-		msg.data[0] = str[i];
-		msg.type    = 0xbabe;
+	msg.data[0] = c;
+	msg.type    = MESSAGE_TYPE_DEBUG_PUTCHAR;
 
-		c4_msg_send( &msg, info->display );
+	c4_msg_send( &msg, 0 );
+}
+
+void debug_putstr( char *str ){
+	for ( unsigned i = 0; str[i]; i++ ){
+		debug_putchar( str[i] );
 	}
+}
+
+void debug_print( struct foo *info, char *str ){
+	debug_putstr( "--- sigma0: " );
+	debug_putstr( str );
+	debug_putchar( '\n' );
 }
 
 int c4_msg_send( message_t *buffer, unsigned to ){
