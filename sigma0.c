@@ -126,6 +126,8 @@ static inline void elf_load_set_arg( uint8_t *stack,
 	*((unsigned *)(stack + offset) + arg + 1) = value;
 }
 
+static struct foo *forth_sysinfo;
+
 int elf_load( Elf32_Ehdr *elf, int display ){
 	unsigned stack_offset = 0xff8;
 
@@ -148,12 +150,13 @@ int elf_load( Elf32_Ehdr *elf, int display ){
 		Elf32_Phdr *header = elf_get_phdr( elf, i );
 		uint8_t *progdata  = (uint8_t *)elf + header->p_offset;
 		void    *addr      = (void *)header->p_vaddr;
-		unsigned pages     = header->p_memsz / PAGE_SIZE
-		                   + header->p_memsz % PAGE_SIZE > 0;
+		unsigned pages     = (header->p_memsz / PAGE_SIZE)
+		                   + (header->p_memsz % PAGE_SIZE > 0);
 		uint8_t *databuf   = allot_pages( pages );
+		unsigned offset    = header->p_vaddr % PAGE_SIZE;
 
 		for ( unsigned k = 0; k < header->p_filesz; k++ ){
-			databuf[k] = progdata[k];
+			databuf[k + offset] = progdata[k];
 		}
 
 		// TODO: translate elf permissions into message permissions
@@ -282,8 +285,6 @@ static inline unsigned nameserver_lookup( unsigned server, unsigned long name ){
 
 	return msg.data[0];
 }
-
-static struct foo *forth_sysinfo;
 
 static char *read_line( char *buf, unsigned n ){
 	message_t msg;
