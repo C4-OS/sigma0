@@ -1,23 +1,17 @@
 #include <sigma0/sigma0.h>
 #include <sigma0/tar.h>
 #include <sigma0/elf.h>
-#include <miniforth/miniforth.h>
 #include <c4/thread.h>
 #include <c4/bootinfo.h>
 
 struct foo {
 	int target;
 	int display;
-	int forth;
 	int nameserver;
 };
 
 static bootinfo_t *c4_bootinfo = (void *)0xfcfff000;
 
-// external binaries linked into the image
-// forth initial commands file
-extern char _binary_init_commands_fs_start[];
-extern char _binary_init_commands_fs_end[];
 // tar
 extern char _binary_initfs_tar_start[];
 extern char _binary_initfs_tar_end[];
@@ -27,7 +21,6 @@ static tar_header_t *tar_initfs = (void *)_binary_initfs_tar_start;
 int c4_set_pager( unsigned thread, unsigned pager );
 
 void test_thread( void *unused );
-void forth_thread( void *sysinfo );
 void debug_putchar( char c );
 void debug_print( struct foo *info, char *asdf );
 int  elf_load( Elf32_Ehdr *elf, int nameserver );
@@ -51,19 +44,13 @@ void main( void ){
 	s -= 1;
 	thing.display = c4_create_thread( display_thread, s, 0 );
 
-	s = allot_stack( 2 );
-	s = stack_push( s, (unsigned)&thing );
-
-	thing.forth = c4_create_thread( forth_thread, s, 0 );
-
 	c4_set_pager( thing.display, 1 );
-	c4_set_pager( thing.forth, 1 );
-
 	c4_continue_thread( thing.display );
-	c4_continue_thread( thing.forth );
 
-	elf_load_file( "./bin/nameserver", 3 );
+	thing.nameserver = elf_load_file( "./bin/nameserver", 3 );
 	elf_load_file( "./bin/pci", 3 );
+	elf_load_file( "./bin/keyboard", thing.nameserver );
+	elf_load_file( "./bin/forth", thing.nameserver );
 
 	server( &thing );
 
@@ -177,7 +164,7 @@ int elf_load( Elf32_Ehdr *elf, int nameserver ){
 	c4_set_pager( thread_id, 1 );
 	c4_continue_thread( thread_id );
 
-	return 0;
+	return thread_id;
 }
 
 int elf_load_file( const char *name, int nameserver ){
@@ -277,181 +264,6 @@ char decode_scancode( unsigned long code ){
 	}
 
 	return ret;
-}
-
-enum {
-	NAME_BIND = 0x1024,
-	NAME_UNBIND,
-	NAME_LOOKUP,
-	NAME_RESULT,
-};
-
-unsigned hash_string( const char *str ){
-	unsigned hash = 757;
-	int c;
-
-	while (( c = *str++ )){
-		hash = ((hash << 7) + hash + c);
-	}
-
-	return hash;
-}
-
-static inline unsigned nameserver_lookup( unsigned server, unsigned long name ){
-	message_t msg = {
-		.type = NAME_LOOKUP,
-		.data = { name },
-	};
-
-	c4_msg_send( &msg, server );
-	c4_msg_recieve( &msg, server );
-
-	return msg.data[0];
-}
-
-static char *read_line( char *buf, unsigned n ){
-	message_t msg;
-	unsigned i = 0;
-
-	for ( i = 0; i < n - 1; i++ ){
-		char c = 0;
-retry:
-		{
-			// XXX: this relies on the /bin/keyboard program being started,
-			//      which itself is initialized by the forth interpreter,
-			//      so this assumes that the program will be started by the
-			//      init_commands.fs script before entering interactive mode
-			static unsigned keyboard_thread = 0;
-
-			if ( !keyboard_thread ){
-				keyboard_thread =
-					nameserver_lookup( 5, hash_string( "/dev/keyboard" ));
-				goto retry;
-			}
-
-			msg.type = 0xbadbeef;
-			c4_msg_send( &msg, keyboard_thread );
-			c4_msg_recieve( &msg, keyboard_thread );
-
-			c = decode_scancode( msg.data[0] );
-
-			if ( c && msg.data[1] == 0 ){
-				msg.type    = 0xbabe;
-				msg.data[0] = c;
-
-			} else {
-				goto retry;
-			}
-		}
-
-		c4_msg_send( &msg, forth_sysinfo->display );
-
-		if ( i && c == '\b' ){
-			i--;
-			goto retry;
-		}
-
-		buf[i] = c;
-
-		if ( c == '\n' ){
-			break;
-		}
-	}
-
-	buf[++i] = '\0';
-
-	return buf;
-}
-
-char minift_get_char( void ){
-	static char input[80];
-	static bool initialized = false;
-	static char *ptr;
-
-	if ( !initialized ){
-		*(_binary_init_commands_fs_end - 1) = 0;
-
-		for ( unsigned i = 0; i < sizeof(input); i++ ){ input[i] = 0; }
-		ptr         = _binary_init_commands_fs_start;
-		initialized = true;
-	}
-
-	while ( !*ptr ){
-		//debug_print( forth_sysinfo, "miniforth > " );
-		ptr = read_line( input, sizeof( input ));
-	}
-
-	return *ptr++;
-}
-
-void minift_put_char( char c ){
-	/*
-	message_t msg;
-
-	msg.type    = 0xbabe;
-	msg.data[0] = c;
-
-	c4_msg_send( &msg, forth_sysinfo->display );
-	*/
-	debug_putchar( c );
-}
-
-static bool c4_minift_sendmsg( minift_vm_t *vm );
-static bool c4_minift_recvmsg( minift_vm_t *vm );
-static bool c4_minift_tarfind( minift_vm_t *vm );
-static bool c4_minift_tarsize( minift_vm_t *vm );
-static bool c4_minift_tarnext( minift_vm_t *vm );
-static bool c4_minift_elfload( minift_vm_t *vm );
-
-static minift_archive_entry_t c4_words[] = {
-	{ "sendmsg", c4_minift_sendmsg, 0 },
-	{ "recvmsg", c4_minift_recvmsg, 0 },
-	{ "tarfind", c4_minift_tarfind, 0 },
-	{ "tarsize", c4_minift_tarsize, 0 },
-	{ "tarnext", c4_minift_tarnext, 0 },
-	{ "elfload", c4_minift_elfload, 0 },
-};
-
-void forth_thread( void *sysinfo ){
-	forth_sysinfo = sysinfo;
-
-	volatile unsigned x = forth_sysinfo->display;
-
-	unsigned long data[1024 + 512];
-	unsigned long calls[32];
-	unsigned long params[32];
-
-	minift_vm_t foo;
-	minift_archive_t arc = {
-		.name    = "c4",
-		.entries = c4_words,
-		.size    = sizeof(c4_words) / sizeof(minift_archive_entry_t),
-	};
-
-	for ( ;; ){
-		minift_stack_t data_stack = {
-			.start = data,
-			.ptr   = data,
-			.end   = data + 1536,
-		};
-
-		minift_stack_t call_stack = {
-			.start = calls,
-			.ptr   = calls,
-			.end   = calls + 32,
-		};
-
-		minift_stack_t param_stack = {
-			.start = params,
-			.ptr   = params,
-			.end   = params + 32,
-		};
-
-		minift_init_vm( &foo, &call_stack, &data_stack, &param_stack, NULL );
-		minift_archive_add( &foo, &arc );
-		minift_run( &foo );
-		debug_print( sysinfo, "forth vm exited, restarting...\n" );
-	}
 }
 
 void debug_putchar( char c ){
@@ -586,83 +398,4 @@ int c4_mem_grant_to( unsigned thread_id,
 	};
 
 	return c4_msg_send( &msg, thread_id );
-}
-
-
-static bool c4_minift_sendmsg( minift_vm_t *vm ){
-	unsigned long target = minift_pop( vm, &vm->param_stack );
-	unsigned long temp   = minift_pop( vm, &vm->param_stack );
-	message_t *msg = (void *)temp;
-
-	if ( !vm->running ){
-		return false;
-	}
-
-	c4_msg_send( msg, target );
-
-	return true;
-}
-
-static bool c4_minift_recvmsg( minift_vm_t *vm ){
-	//  TODO: add 'from' argument, once that's supported
-	unsigned long temp   = minift_pop( vm, &vm->param_stack );
-	message_t *msg = (void *)temp;
-
-	if ( !vm->running ){
-		return false;
-	}
-
-	c4_msg_recieve( msg, 0 );
-
-	return true;
-}
-
-static bool c4_minift_tarfind( minift_vm_t *vm ){
-	const char   *name   = (const char *)minift_pop( vm, &vm->param_stack );
-
-	// simulate a "root" directory, which just returns the start of the
-	// tar archive
-	if ( name[0] == '/' && name[1] == '\0' ){
-		minift_push( vm, &vm->param_stack, (unsigned long)tar_initfs );
-
-	} else {
-		tar_header_t *lookup = tar_lookup( tar_initfs, name );
-		minift_push( vm, &vm->param_stack, (unsigned long)lookup );
-	}
-
-	return true;
-}
-
-static bool c4_minift_tarsize( minift_vm_t *vm ){
-	tar_header_t *lookup = (tar_header_t *)minift_pop( vm, &vm->param_stack );
-
-	if ( lookup ){
-		minift_push( vm, &vm->param_stack, tar_data_size( lookup ));
-
-	} else {
-		minift_push( vm, &vm->param_stack, 0 );
-	}
-
-	return true;
-}
-
-static bool c4_minift_tarnext( minift_vm_t *vm ){
-	tar_header_t *temp = (tar_header_t *)minift_pop( vm, &vm->param_stack );
-
-	temp = tar_next( temp );
-	minift_push( vm, &vm->param_stack, (unsigned long)temp );
-
-	return true;
-}
-
-static bool c4_minift_elfload( minift_vm_t *vm ){
-	tar_header_t *temp = (tar_header_t *)minift_pop( vm, &vm->param_stack );
-
-	void *data = tar_data( temp );
-	// TODO: change this once a generic structure for passing info to new
-	//       threads is implemented
-	int id = elf_load( data, 5 );
-
-	minift_push( vm, &vm->param_stack, id );
-	return true;
 }
