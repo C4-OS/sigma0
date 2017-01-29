@@ -73,10 +73,10 @@ void main( void ){
 }
 
 static void bss_init( void ){
-	extern uint8_t *bss_start;
-	extern uint8_t *bss_end;
+	extern uint8_t bss_start;
+	extern uint8_t bss_end;
 
-	for ( uint8_t *ptr = bss_start; ptr < bss_end; ptr++ ){
+	for ( uint8_t *ptr = &bss_start; ptr < &bss_end; ptr++ ){
 		*ptr = 0;
 	}
 }
