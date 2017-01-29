@@ -34,6 +34,7 @@ int  elf_load( Elf32_Ehdr *elf, int nameserver );
 int  elf_load_file( const char *name, int nameserver );
 
 static void  bss_init( void );
+static void  framebuffer_init( void );
 static void *allot_pages( unsigned pages );
 static void *allot_stack( unsigned pages );
 static void *stack_push( unsigned *stack, unsigned foo );
@@ -44,28 +45,7 @@ void main( void ){
 	// set the memory in bss to zero, which is needed since this loaded
 	// as a flat binary
 	bss_init( );
-
-	if ( c4_bootinfo->framebuffer.exists ){
-		unsigned size =
-			c4_bootinfo->framebuffer.width *
-			c4_bootinfo->framebuffer.height *
-			4;
-
-		c4_request_physical( 0xfb000000,
-		                     c4_bootinfo->framebuffer.addr,
-		                     size / PAGE_SIZE + 1,
-		                     PAGE_READ | PAGE_WRITE );
-
-		uint32_t *fb = (void *)0xfb000000;
-
-		for ( unsigned y = 0; y < c4_bootinfo->framebuffer.height; y++ ){
-			for ( unsigned x = 0; x < c4_bootinfo->framebuffer.width; x++ ){
-				unsigned index = y * c4_bootinfo->framebuffer.width + x;
-
-				fb[index] = ((y & 0xff) << 16) | ((x & 0xff) << 8) | x ^ y;
-			}
-		}
-	}
+	framebuffer_init();
 
 	unsigned *s = allot_stack( 1 );
 	s -= 1;
@@ -98,6 +78,30 @@ static void bss_init( void ){
 
 	for ( uint8_t *ptr = bss_start; ptr < bss_end; ptr++ ){
 		*ptr = 0;
+	}
+}
+
+static void framebuffer_init( void ){
+	if ( c4_bootinfo->framebuffer.exists ){
+		unsigned size =
+			c4_bootinfo->framebuffer.width *
+			c4_bootinfo->framebuffer.height *
+			4;
+
+		c4_request_physical( 0xfb000000,
+		                     c4_bootinfo->framebuffer.addr,
+		                     size / PAGE_SIZE + 1,
+		                     PAGE_READ | PAGE_WRITE );
+
+		uint32_t *fb = (void *)0xfb000000;
+
+		for ( unsigned y = 0; y < c4_bootinfo->framebuffer.height; y++ ){
+			for ( unsigned x = 0; x < c4_bootinfo->framebuffer.width; x++ ){
+				unsigned index = y * c4_bootinfo->framebuffer.width + x;
+
+				fb[index] = ((y & 0xff) << 16) | ((x & 0xff) << 8) | x ^ y;
+			}
+		}
 	}
 }
 
