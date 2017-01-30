@@ -14,8 +14,7 @@ SIGMA0_CFLAGS  = -Wall -g -O2 -ffreestanding -nostdlib -nodefaultlibs \
 				 -nostartfiles -fno-builtin -fpie -fpic \
 				 $(SIGMA0_INCLUDE) $(KERNEL_INCLUDE)
 
-sig-objs  = sigma0.o display.o tar.o elf.o
-sig-objs += initfs.o
+sig-objs  = sigma0.o tar.o elf.o initfs.o
 
 .PHONY: all
 all: c4-$(ARCH)-sigma0

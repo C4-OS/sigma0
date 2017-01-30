@@ -40,15 +40,10 @@ void main( void ){
 	bss_init( );
 	framebuffer_init();
 
-	unsigned *s = allot_stack( 1 );
-	s -= 1;
-	thing.display = c4_create_thread( display_thread, s, 0 );
+	thing.nameserver = elf_load_file( "./bin/nameserver", 4 );
+	thing.display    = elf_load_file( "./bin/display", thing.nameserver );
 
-	c4_set_pager( thing.display, 1 );
-	c4_continue_thread( thing.display );
-
-	thing.nameserver = elf_load_file( "./bin/nameserver", 3 );
-	elf_load_file( "./bin/pci", 3 );
+	elf_load_file( "./bin/pci", thing.display );
 	elf_load_file( "./bin/keyboard", thing.nameserver );
 	elf_load_file( "./bin/forth", thing.nameserver );
 
