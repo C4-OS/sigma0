@@ -223,6 +223,15 @@ void server( void *data ){
 			debug_print_hex( msg.data[1] );
 			debug_putstr( "\n" );
 
+		} else if ( is_page_request( &msg )){
+			debug_putstr( "--- sigma0: got a page request for 0x" );
+			debug_print_hex( msg.data[0] );
+			debug_putstr( "\n" );
+
+			void *page = allot_pages( 1 );
+
+			c4_mem_grant_to( msg.sender, page, (void *)msg.data[0], 1, msg.data[1] );
+
 		} else {
 			debug_print( meh, "sigma0: got an unknown message, ignoring\n" );
 		}
