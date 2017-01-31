@@ -22,6 +22,9 @@ int c4_set_pager( unsigned thread, unsigned pager );
 
 void test_thread( void *unused );
 void debug_putchar( char c );
+void debug_print_num( unsigned n );
+void debug_print_hex( unsigned n );
+void debug_putstr( char *asdf );
 void debug_print( struct foo *info, char *asdf );
 int  elf_load( Elf32_Ehdr *elf, int nameserver );
 int  elf_load_file( const char *name, int nameserver );
@@ -193,6 +196,10 @@ static inline bool is_page_fault( const message_t *msg ){
 	return msg->type == MESSAGE_TYPE_PAGE_FAULT;
 }
 
+static inline bool is_page_request( const message_t *msg ){
+	return msg->type == 0xbeef10af;
+}
+
 static inline bool is_keystroke( const message_t *msg ){
 	return msg->type == 0xbeef;
 }
@@ -205,7 +212,16 @@ void server( void *data ){
 		c4_msg_recieve( &msg, 0 );
 
 		if ( is_page_fault( &msg )){
-			debug_print( meh, "got a page fault message, eh\n" );
+			// TODO: implement a printf
+			debug_putstr( "--- sigma0: unhandled page fault: thread " );
+			debug_print_num( msg.sender );
+			debug_putstr( ", " );
+			debug_putstr((msg.data[2] == PAGE_WRITE)? "write @ " : "read @ " );
+			debug_putstr( "0x" );
+			debug_print_hex( msg.data[0] );
+			debug_putstr( ", ip=0x" );
+			debug_print_hex( msg.data[1] );
+			debug_putstr( "\n" );
 
 		} else {
 			debug_print( meh, "sigma0: got an unknown message, ignoring\n" );
@@ -273,6 +289,48 @@ void debug_putchar( char c ){
 void debug_putstr( char *str ){
 	for ( unsigned i = 0; str[i]; i++ ){
 		debug_putchar( str[i] );
+	}
+}
+
+void debug_print_num( unsigned n ){
+	char buf[32];
+	unsigned i = 0;
+
+	if ( n ){
+		for ( ; n; n /= 10, i++ ){
+			buf[i] = n % 10 + '0';
+		}
+
+		buf[i] = '\0';
+
+	} else {
+		buf[i++] = '0';
+		buf[i]   = '\0';
+	}
+
+	while ( i-- ){
+		debug_putchar( buf[i] );
+	}
+}
+
+void debug_print_hex( unsigned n ){
+	char buf[32];
+	unsigned i = 0;
+
+	if ( n ){
+		for ( ; n; n /= 16, i++ ){
+			buf[i] = "0123456789abcdef"[n % 16];
+		}
+
+		buf[i] = '\0';
+
+	} else {
+		buf[i++] = '0';
+		buf[i]   = '\0';
+	}
+
+	while ( i-- ){
+		debug_putchar( buf[i] );
 	}
 }
 
