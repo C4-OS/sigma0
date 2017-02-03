@@ -19,6 +19,7 @@ extern char _binary_initfs_tar_end[];
 static tar_header_t *tar_initfs = (void *)_binary_initfs_tar_start;
 
 int c4_set_pager( unsigned thread, unsigned pager );
+void c4_dump_maps( unsigned thread );
 
 void test_thread( void *unused );
 void debug_putchar( char c );
@@ -222,6 +223,9 @@ void server( void *data ){
 			debug_putstr( ", ip=0x" );
 			debug_print_hex( msg.data[1] );
 			debug_putstr( "\n" );
+			debug_putstr( "--- sigma0: address space map:\n" );
+
+			c4_dump_maps( msg.sender );
 
 		} else if ( is_page_request( &msg )){
 			debug_putstr( "--- sigma0: got a page request for 0x" );
@@ -460,4 +464,13 @@ int c4_mem_grant_to( unsigned thread_id,
 	};
 
 	return c4_msg_send( &msg, thread_id );
+}
+
+void c4_dump_maps( unsigned thread ){
+	message_t msg = {
+		.type = MESSAGE_TYPE_DUMP_MAPS,
+		.data = { thread },
+	};
+
+	c4_msg_send( &msg, thread );
 }
