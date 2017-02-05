@@ -4,6 +4,7 @@ SIGMA0_INCLUDE = -Isigma0/include/
 SIGMA0_CFLAGS  = $(C4_CFLAGS) -fpic $(SIGMA0_INCLUDE)
 
 sig-objs = sigma0/sigma0.o sigma0/tar.o sigma0/elf.o sigma0/initfs.o
+sig-libs = $(BUILD)/libs/c4rt.a
 
 sigma0/%.o: sigma0/%.c
 	@echo CC $< -c -o $@
@@ -20,7 +21,8 @@ sigma0/initfs.o: $(BUILD)/initfs.tar
 	@rm $@.tmp.o
 
 $(BUILD)/sigma0-$(ARCH).elf: $(sig-objs)
-	@$(C4_CC) $(SIGMA0_CFLAGS) -T sigma0/linker.ld $(sig-objs) -o $@
+	@$(C4_CC) $(SIGMA0_CFLAGS) -T sigma0/linker.ld \
+		$(sig-objs) $(sig-libs) -o $@
 
 $(BUILD)/c4-$(ARCH)-sigma0: $(BUILD)/sigma0-$(ARCH).elf
 	@echo OBJCOPY $< $@

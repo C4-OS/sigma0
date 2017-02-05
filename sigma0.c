@@ -3,6 +3,7 @@
 #include <sigma0/elf.h>
 #include <c4/thread.h>
 #include <c4/bootinfo.h>
+#include <c4rt/c4rt.h>
 
 struct foo {
 	int target;
@@ -12,32 +13,17 @@ struct foo {
 
 static bootinfo_t *c4_bootinfo = (void *)0xfcfff000;
 
-// tar
-//extern char _binary_initfs_tar_start[];
-//extern char _binary_initfs_tar_end[];
-
 extern char initfs_start[];
 extern char initfs_end[];
 
 static tar_header_t *tar_initfs = (void *)initfs_start;
 
-int c4_set_pager( unsigned thread, unsigned pager );
-void c4_dump_maps( unsigned thread );
-
-void test_thread( void *unused );
-void debug_putchar( char c );
-void debug_print_num( unsigned n );
-void debug_print_hex( unsigned n );
-void debug_putstr( char *asdf );
-void debug_print( struct foo *info, char *asdf );
 int  elf_load( Elf32_Ehdr *elf, int nameserver );
 int  elf_load_file( const char *name, int nameserver );
 
 static void  bss_init( void );
 static void  framebuffer_init( void );
 static void *allot_pages( unsigned pages );
-static void *allot_stack( unsigned pages );
-static void *stack_push( unsigned *stack, unsigned foo );
 
 void main( void ){
 	struct foo thing;
@@ -70,6 +56,7 @@ static void bss_init( void ){
 	}
 }
 
+// TODO: move this to the display program
 static void framebuffer_init( void ){
 	if ( c4_bootinfo->framebuffer.exists ){
 		unsigned size =
@@ -88,7 +75,7 @@ static void framebuffer_init( void ){
 			for ( unsigned x = 0; x < c4_bootinfo->framebuffer.width; x++ ){
 				unsigned index = y * c4_bootinfo->framebuffer.width + x;
 
-				fb[index] = ((y & 0xff) << 16) | ((x & 0xff) << 8) | x ^ y;
+				fb[index] = ((y & 0xff) << 16) | ((x & 0xff) << 8) | (x ^ y);
 			}
 		}
 	}
@@ -103,20 +90,6 @@ static void *allot_pages( unsigned pages ){
 	return ret;
 }
 
-static void *allot_stack( unsigned pages ){
-	uint8_t *ret = allot_pages( pages );
-
-	ret += pages * PAGE_SIZE - 4;
-
-	return ret;
-}
-
-static void *stack_push( unsigned *stack, unsigned foo ){
-	*(stack--) = foo;
-
-	return stack;
-}
-
 static inline void elf_load_set_arg( uint8_t *stack,
                                      unsigned offset,
                                      unsigned arg,
@@ -124,8 +97,6 @@ static inline void elf_load_set_arg( uint8_t *stack,
 {
 	*((unsigned *)(stack + offset) + arg + 1) = value;
 }
-
-static struct foo *forth_sysinfo;
 
 int elf_load( Elf32_Ehdr *elf, int nameserver ){
 	unsigned stack_offset = 0xff8;
@@ -182,18 +153,6 @@ int elf_load_file( const char *name, int nameserver ){
 	return ret;
 }
 
-void test_thread( void *data ){
-	message_t msg;
-	volatile struct foo *meh = data;
-
-	msg.type = 0xcafe;
-
-	for (;;){
-		c4_msg_recieve( &msg, 0 );
-		c4_msg_send( &msg, meh->target );
-	}
-}
-
 extern const char *foo;
 
 static inline bool is_page_fault( const message_t *msg ){
@@ -210,270 +169,33 @@ static inline bool is_keystroke( const message_t *msg ){
 
 void server( void *data ){
 	message_t msg;
-	struct foo *meh = data;
 
 	while ( true ){
 		c4_msg_recieve( &msg, 0 );
 
 		if ( is_page_fault( &msg )){
-			// TODO: implement a printf
-			debug_putstr( "--- sigma0: unhandled page fault: thread " );
-			debug_print_num( msg.sender );
-			debug_putstr( ", " );
-			debug_putstr((msg.data[2] == PAGE_WRITE)? "write @ " : "read @ " );
-			debug_putstr( "0x" );
-			debug_print_hex( msg.data[0] );
-			debug_putstr( ", ip=0x" );
-			debug_print_hex( msg.data[1] );
-			debug_putstr( "\n" );
-			debug_putstr( "--- sigma0: address space map:\n" );
+			c4_debug_printf(
+				"--- sigma0: unhandled page fault: thread %u, %s %p, ip=%p\n",
+				msg.sender,
+				(msg.data[2] == PAGE_WRITE)? "write to" : "read from",
+				msg.data[0], msg.data[1]
+			);
 
 			c4_dump_maps( msg.sender );
 
 		} else if ( is_page_request( &msg )){
-			debug_putstr( "--- sigma0: got a page request for 0x" );
-			debug_print_hex( msg.data[0] );
-			debug_putstr( "\n" );
+			c4_debug_printf( "--- sigma0: got a page request for %p\n",
+			                 msg.data[0] );
 
 			void *page = allot_pages( 1 );
 
-			c4_mem_grant_to( msg.sender, page, (void *)msg.data[0], 1, msg.data[1] );
+			c4_mem_grant_to( msg.sender, page,
+			                 (void *)msg.data[0], 1, msg.data[1] );
 
 		} else {
-			debug_print( meh, "sigma0: got an unknown message, ignoring\n" );
+			c4_debug_printf( "--- sigma0: unknown message %x\n", msg.type );
 		}
 	}
 
 	for ( ;; );
-}
-
-enum {
-	CODE_ESCAPE,
-	CODE_TAB,
-	CODE_LEFT_CONTROL,
-	CODE_RIGHT_CONTROL,
-	CODE_LEFT_SHIFT,
-	CODE_RIGHT_SHIFT,
-};
-
-const char lowercase[] =
-	{ '`', CODE_ESCAPE, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-',
-	  '=', '\b', CODE_TAB, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
-	  '[', ']', '\n', CODE_LEFT_CONTROL, 'a', 's', 'd', 'f', 'g', 'h', 'j',
-	  'k', 'l', ';', '\'', '?', CODE_LEFT_SHIFT, '?', 'z', 'x', 'c', 'v', 'b',
-	  'n', 'm', ',', '.', '/', CODE_RIGHT_SHIFT, '_', '_', ' ', '_', '_', '_',
-	  '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_',
-	};
-
-const char uppercase[] =
-	{ '~', CODE_ESCAPE, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_',
-	  '+', '\b', CODE_TAB, 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P',
-	  '{', '}', '\n', CODE_LEFT_CONTROL, 'A', 'S', 'D', 'F', 'G', 'H', 'J',
-	  'K', 'L', ':', '"', '?', CODE_LEFT_SHIFT, '?', 'Z', 'X', 'C', 'V', 'B',
-	  'N', 'M', '<', '>', '?', CODE_RIGHT_SHIFT, '_', '_', ' ', '_', '_', '_',
-	  '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_',
-	};
-
-char decode_scancode( unsigned long code ){
-	static bool is_uppercase = false;
-	char c = is_uppercase? uppercase[code] : lowercase[code];
-	char ret = '\0';
-
-	switch ( c ){
-		case CODE_LEFT_SHIFT:
-		case CODE_RIGHT_SHIFT:
-			is_uppercase = !is_uppercase;
-			break;
-
-		default:
-			ret = c;
-			break;
-	}
-
-	return ret;
-}
-
-void debug_putchar( char c ){
-	message_t msg;
-
-	msg.data[0] = c;
-	msg.type    = MESSAGE_TYPE_DEBUG_PUTCHAR;
-
-	c4_msg_send( &msg, 0 );
-}
-
-void debug_putstr( char *str ){
-	for ( unsigned i = 0; str[i]; i++ ){
-		debug_putchar( str[i] );
-	}
-}
-
-void debug_print_num( unsigned n ){
-	char buf[32];
-	unsigned i = 0;
-
-	if ( n ){
-		for ( ; n; n /= 10, i++ ){
-			buf[i] = n % 10 + '0';
-		}
-
-		buf[i] = '\0';
-
-	} else {
-		buf[i++] = '0';
-		buf[i]   = '\0';
-	}
-
-	while ( i-- ){
-		debug_putchar( buf[i] );
-	}
-}
-
-void debug_print_hex( unsigned n ){
-	char buf[32];
-	unsigned i = 0;
-
-	if ( n ){
-		for ( ; n; n /= 16, i++ ){
-			buf[i] = "0123456789abcdef"[n % 16];
-		}
-
-		buf[i] = '\0';
-
-	} else {
-		buf[i++] = '0';
-		buf[i]   = '\0';
-	}
-
-	while ( i-- ){
-		debug_putchar( buf[i] );
-	}
-}
-
-void debug_print( struct foo *info, char *str ){
-	debug_putstr( "--- sigma0: " );
-	debug_putstr( str );
-	debug_putchar( '\n' );
-}
-
-int c4_msg_send( message_t *buffer, unsigned to ){
-	int ret = 0;
-
-	DO_SYSCALL( SYSCALL_SEND, buffer, to, 0, 0, ret );
-
-	return ret;
-}
-
-int c4_msg_recieve( message_t *buffer, unsigned from ){
-	int ret = 0;
-
-	DO_SYSCALL( SYSCALL_RECIEVE, buffer, from, 0, 0, ret );
-
-	return ret;
-}
-
-int c4_msg_send_async( message_t *buffer, unsigned to ){
-	int ret = 0;
-
-	DO_SYSCALL( SYSCALL_SEND_ASYNC, buffer, to, 0, 0, ret );
-
-	return ret;
-}
-
-int c4_msg_recieve_async( message_t *buffer, unsigned flags ){
-	int ret = 0;
-
-	DO_SYSCALL( SYSCALL_RECIEVE_ASYNC, buffer, flags, 0, 0, ret );
-
-	return ret;
-}
-
-int c4_create_thread( void *entry, void *stack, unsigned flags ){
-	int ret = 0;
-
-	DO_SYSCALL( SYSCALL_CREATE_THREAD, entry, stack, flags, 0, ret );
-
-	return ret;
-}
-
-int c4_continue_thread( unsigned thread ){
-	message_t buf = { .type = MESSAGE_TYPE_CONTINUE, };
-
-	return c4_msg_send( &buf, thread );
-}
-
-int c4_set_pager( unsigned thread, unsigned pager ){
-	message_t buf = {
-		.type = MESSAGE_TYPE_SET_PAGER,
-		.data = { pager },
-	};
-
-	return c4_msg_send( &buf, thread );
-}
-
-void *c4_request_physical( uintptr_t virt,
-                           uintptr_t physical,
-                           unsigned size,
-                           unsigned permissions )
-{
-	message_t msg = {
-		.type = MESSAGE_TYPE_REQUEST_PHYS,
-		.data = {
-			virt,
-			physical,
-			size,
-			permissions
-		},
-	};
-
-	c4_msg_send( &msg, 0 );
-
-	return (void *)virt;
-}
-
-int c4_mem_map_to( unsigned thread_id,
-                   void *from,
-                   void *to,
-                   unsigned size,
-                   unsigned permissions )
-{
-	message_t msg = {
-		.type = MESSAGE_TYPE_MAP_TO,
-		.data = {
-			(uintptr_t)from,
-			(uintptr_t)to,
-			(uintptr_t)size,
-			(uintptr_t)permissions,
-		},
-	};
-
-	return c4_msg_send( &msg, thread_id );
-}
-
-int c4_mem_grant_to( unsigned thread_id,
-                     void *from,
-                     void *to,
-                     unsigned size,
-                     unsigned permissions )
-{
-	message_t msg = {
-		.type = MESSAGE_TYPE_GRANT_TO,
-		.data = {
-			(uintptr_t)from,
-			(uintptr_t)to,
-			(uintptr_t)size,
-			(uintptr_t)permissions,
-		},
-	};
-
-	return c4_msg_send( &msg, thread_id );
-}
-
-void c4_dump_maps( unsigned thread ){
-	message_t msg = {
-		.type = MESSAGE_TYPE_DUMP_MAPS,
-		.data = { thread },
-	};
-
-	c4_msg_send( &msg, thread );
 }

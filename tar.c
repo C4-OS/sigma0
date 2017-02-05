@@ -1,5 +1,6 @@
 #include <sigma0/sigma0.h>
 #include <sigma0/tar.h>
+#include <c4rt/c4rt.h>
 #include <stdbool.h>
 
 static inline bool str_equal( const char *a, const char *b ){

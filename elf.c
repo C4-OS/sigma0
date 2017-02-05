@@ -1,5 +1,6 @@
 #include <sigma0/sigma0.h>
 #include <sigma0/elf.h>
+#include <c4rt/c4rt.h>
 
 Elf32_Shdr *elf_get_shdr( Elf32_Ehdr *, unsigned );
 Elf32_Shdr *elf_get_shdr_byname( Elf32_Ehdr *, char * );
