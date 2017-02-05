@@ -13,10 +13,13 @@ struct foo {
 static bootinfo_t *c4_bootinfo = (void *)0xfcfff000;
 
 // tar
-extern char _binary_initfs_tar_start[];
-extern char _binary_initfs_tar_end[];
+//extern char _binary_initfs_tar_start[];
+//extern char _binary_initfs_tar_end[];
 
-static tar_header_t *tar_initfs = (void *)_binary_initfs_tar_start;
+extern char initfs_start[];
+extern char initfs_end[];
+
+static tar_header_t *tar_initfs = (void *)initfs_start;
 
 int c4_set_pager( unsigned thread, unsigned pager );
 void c4_dump_maps( unsigned thread );
