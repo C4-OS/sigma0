@@ -39,6 +39,7 @@ void main( void ){
 	elf_load_file( "./bin/pci", thing.display );
 	elf_load_file( "./bin/keyboard", thing.nameserver );
 	elf_load_file( "./bin/forth", thing.nameserver );
+	elf_load_file( "./bin/skeleton-prog", thing.nameserver );
 
 	server( &thing );
 
