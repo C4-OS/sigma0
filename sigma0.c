@@ -4,6 +4,10 @@
 #include <c4/thread.h>
 #include <c4/bootinfo.h>
 #include <c4rt/c4rt.h>
+#include <c4/bootinfo.h>
+
+#define DBG_PRINTF( FORMAT, ... ) \
+	c4_debug_printf( "--- sigma0: " FORMAT, __VA_ARGS__ )
 
 struct foo {
 	int target;
@@ -11,19 +15,17 @@ struct foo {
 	int nameserver;
 };
 
-static bootinfo_t *c4_bootinfo = (void *)0xfcfff000;
-
 extern char initfs_start[];
 extern char initfs_end[];
 
 static tar_header_t *tar_initfs = (void *)initfs_start;
 
-int  elf_load( Elf32_Ehdr *elf, int nameserver );
-int  elf_load_file( const char *name, int nameserver );
+int elf_load( Elf32_Ehdr *elf, int nameserver );
+int elf_load_file( const char *name, int nameserver );
 
 static void  bss_init( void );
-static void  framebuffer_init( void );
 static void *allot_pages( unsigned pages );
+static void  server( void *data );
 
 void main( void ){
 	struct foo thing;
@@ -31,7 +33,6 @@ void main( void ){
 	// set the memory in bss to zero, which is needed since this loaded
 	// as a flat binary
 	bss_init( );
-	framebuffer_init();
 
 	thing.nameserver = elf_load_file( "./bin/nameserver", 4 );
 	thing.display    = elf_load_file( "./bin/display", thing.nameserver );
@@ -48,37 +49,74 @@ void main( void ){
 	for ( ;; );
 }
 
+static inline bool is_page_fault( const message_t *msg ){
+	return msg->type == MESSAGE_TYPE_PAGE_FAULT;
+}
+
+static inline bool is_page_request( const message_t *msg ){
+	return msg->type == 0xbeef10af;
+}
+
+static inline bool is_keystroke( const message_t *msg ){
+	return msg->type == 0xbeef;
+}
+
+static inline bool is_bootinfo_fault( const message_t *msg ){
+	uintptr_t offset = msg->data[0] % PAGE_SIZE;
+	uintptr_t addr   = msg->data[0] - offset;
+	unsigned  perms  = msg->data[2];
+
+	return is_page_fault( msg )
+	    && addr  == (uintptr_t)BOOTINFO_ADDR
+	    && perms == PAGE_READ;
+}
+
+static void server( void *data ){
+	message_t msg;
+
+	while ( true ){
+		c4_msg_recieve( &msg, 0 );
+
+		if ( is_bootinfo_fault( &msg )){
+			DBG_PRINTF( "bootinfo memory request from %u\n", msg.sender );
+			c4_mem_map_to( msg.sender, BOOTINFO_ADDR, BOOTINFO_ADDR,
+			               1, PAGE_READ );
+			c4_continue_thread( msg.sender );
+
+		} else if ( is_page_fault( &msg )){
+			c4_debug_printf(
+				"--- sigma0: unhandled page fault: thread %u, %s %p, ip=%p\n",
+				msg.sender,
+				(msg.data[2] == PAGE_WRITE)? "write to" : "read from",
+				msg.data[0], msg.data[1]
+			);
+
+			c4_dump_maps( msg.sender );
+
+		} else if ( is_page_request( &msg )){
+			DBG_PRINTF( "got a page request for %p\n", msg.data[0] );
+
+			void *page = allot_pages( 1 );
+			void *addr = (void *)msg.data[0];
+			unsigned permissions = msg.data[1];
+			unsigned long sender = msg.sender;
+
+			c4_mem_grant_to( sender, page, addr, 1, permissions );
+
+		} else {
+			DBG_PRINTF( "unknown message %x\n", msg.type );
+		}
+	}
+
+	for ( ;; );
+}
+
 static void bss_init( void ){
 	extern uint8_t bss_start;
 	extern uint8_t bss_end;
 
 	for ( uint8_t *ptr = &bss_start; ptr < &bss_end; ptr++ ){
 		*ptr = 0;
-	}
-}
-
-// TODO: move this to the display program
-static void framebuffer_init( void ){
-	if ( c4_bootinfo->framebuffer.exists ){
-		unsigned size =
-			c4_bootinfo->framebuffer.width *
-			c4_bootinfo->framebuffer.height *
-			4;
-
-		c4_request_physical( 0xfb000000,
-		                     c4_bootinfo->framebuffer.addr,
-		                     size / PAGE_SIZE + 1,
-		                     PAGE_READ | PAGE_WRITE );
-
-		uint32_t *fb = (void *)0xfb000000;
-
-		for ( unsigned y = 0; y < c4_bootinfo->framebuffer.height; y++ ){
-			for ( unsigned x = 0; x < c4_bootinfo->framebuffer.width; x++ ){
-				unsigned index = y * c4_bootinfo->framebuffer.width + x;
-
-				fb[index] = ((y & 0xff) << 16) | ((x & 0xff) << 8) | (x ^ y);
-			}
-		}
 	}
 }
 
@@ -152,51 +190,4 @@ int elf_load_file( const char *name, int nameserver ){
 	}
 
 	return ret;
-}
-
-extern const char *foo;
-
-static inline bool is_page_fault( const message_t *msg ){
-	return msg->type == MESSAGE_TYPE_PAGE_FAULT;
-}
-
-static inline bool is_page_request( const message_t *msg ){
-	return msg->type == 0xbeef10af;
-}
-
-static inline bool is_keystroke( const message_t *msg ){
-	return msg->type == 0xbeef;
-}
-
-void server( void *data ){
-	message_t msg;
-
-	while ( true ){
-		c4_msg_recieve( &msg, 0 );
-
-		if ( is_page_fault( &msg )){
-			c4_debug_printf(
-				"--- sigma0: unhandled page fault: thread %u, %s %p, ip=%p\n",
-				msg.sender,
-				(msg.data[2] == PAGE_WRITE)? "write to" : "read from",
-				msg.data[0], msg.data[1]
-			);
-
-			c4_dump_maps( msg.sender );
-
-		} else if ( is_page_request( &msg )){
-			c4_debug_printf( "--- sigma0: got a page request for %p\n",
-			                 msg.data[0] );
-
-			void *page = allot_pages( 1 );
-
-			c4_mem_grant_to( msg.sender, page,
-			                 (void *)msg.data[0], 1, msg.data[1] );
-
-		} else {
-			c4_debug_printf( "--- sigma0: unknown message %x\n", msg.type );
-		}
-	}
-
-	for ( ;; );
 }
