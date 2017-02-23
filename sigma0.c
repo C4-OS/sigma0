@@ -163,13 +163,14 @@ int elf_load( Elf32_Ehdr *elf, int nameserver ){
 		                   + (header->p_memsz % PAGE_SIZE > 0);
 		uint8_t *databuf   = allot_pages( pages );
 		unsigned offset    = header->p_vaddr % PAGE_SIZE;
+		void    *adjaddr   = (uint8_t *)addr - offset;
 
 		for ( unsigned k = 0; k < header->p_filesz; k++ ){
 			databuf[k + offset] = progdata[k];
 		}
 
 		// TODO: translate elf permissions into message permissions
-		c4_mem_grant_to( thread_id, databuf, addr, pages,
+		c4_mem_grant_to( thread_id, databuf, adjaddr, pages,
 		                 PAGE_READ | PAGE_WRITE );
 	}
 
