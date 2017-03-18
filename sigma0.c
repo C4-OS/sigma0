@@ -4,7 +4,7 @@
 #include <c4/thread.h>
 #include <c4/bootinfo.h>
 #include <c4rt/c4rt.h>
-#include <c4/bootinfo.h>
+#include <c4rt/stublibc.h>
 
 #define DBG_PRINTF( FORMAT, ... ) \
 	c4_debug_printf( "--- sigma0: " FORMAT, __VA_ARGS__ )
@@ -22,6 +22,7 @@ static tar_header_t *tar_initfs = (void *)initfs_start;
 
 int elf_load( Elf32_Ehdr *elf, int nameserver );
 int elf_load_file( const char *name, int nameserver );
+int elf_load_tar_header( tar_header_t *header, int nameserver );
 
 static void  bss_init( void );
 static void *allot_pages( unsigned pages );
@@ -34,15 +35,21 @@ void main( void ){
 	// as a flat binary
 	bss_init( );
 
-	thing.nameserver = elf_load_file( "./bin/nameserver", 4 );
-	thing.display    = elf_load_file( "./bin/display", thing.nameserver );
+	thing.nameserver = elf_load_file( "./bin/nameserver", 0 );
 
-	elf_load_file( "./bin/pci", thing.display );
-	elf_load_file( "./bin/ata", thing.nameserver );
-	elf_load_file( "./bin/keyboard", thing.nameserver );
-	elf_load_file( "./bin/forth", thing.nameserver );
-	elf_load_file( "./bin/skeleton-prog", thing.nameserver );
-	elf_load_file( "./bin/atatest", thing.nameserver );
+	for ( tar_header_t *iter = tar_initfs;
+	      !tar_end(iter);
+	      iter = tar_next( iter ))
+	{
+		// XXX: avoid loading the nameserver a second time
+		if ( strcmp( iter->filename, "./bin/nameserver" ) == 0 ){
+			continue;
+		}
+
+		int id = elf_load_tar_header( iter, thing.nameserver );
+		c4_debug_printf( "--- sigma0: started \"%s\" at id %u\n",
+				iter->filename, id );
+	}
 
 	server( &thing );
 
@@ -188,6 +195,18 @@ int elf_load_file( const char *name, int nameserver ){
 
 	if ( lookup ){
 		void *data = tar_data( lookup );
+
+		ret = elf_load( data, nameserver );
+	}
+
+	return ret;
+}
+
+int elf_load_tar_header( tar_header_t *header, int nameserver ){
+	int ret = -1;
+
+	if ( header ){
+		void *data = tar_data( header );
 
 		ret = elf_load( data, nameserver );
 	}

@@ -1,5 +1,6 @@
 #ifndef _C4_SIGMA0_TAR_H
 #define _C4_SIGMA0_TAR_H
+#include <stdbool.h>
 #include <stdint.h>
 
 // this struct doesn't define fields which aren't used,
@@ -15,5 +16,6 @@ tar_header_t *tar_lookup( tar_header_t *archive, const char *name );
 tar_header_t *tar_next( tar_header_t *archive );
 void         *tar_data( tar_header_t *archive );
 unsigned      tar_data_size( tar_header_t *archive );
+bool          tar_end( tar_header_t *archive );
 
 #endif

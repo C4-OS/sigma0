@@ -60,3 +60,7 @@ void *tar_data( tar_header_t *archive ){
 unsigned tar_data_size( tar_header_t *archive ){
 	return octal_num( archive->size );
 }
+
+bool tar_end( tar_header_t *archive ){
+	return !archive || !*archive->filename;
+}
