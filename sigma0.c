@@ -103,14 +103,18 @@ static void server( void *data ){
 			c4_dump_maps( msg.sender );
 
 		} else if ( is_page_request( &msg )){
-			DBG_PRINTF( "got a page request for %p\n", msg.data[0] );
+			DBG_PRINTF( "request for %u pages at %p\n",
+				msg.data[2], msg.data[0] );
 
-			void *page = allot_pages( 1 );
+			// TODO: two things, keep track of available memory, and check that
+			//       there is actually enough memory to satisfy the request
+			unsigned pages = msg.data[2];
+			void *page = allot_pages( pages );
 			void *addr = (void *)msg.data[0];
 			unsigned permissions = msg.data[1];
 			unsigned long sender = msg.sender;
 
-			c4_mem_grant_to( sender, page, addr, 1, permissions );
+			c4_mem_grant_to( sender, page, addr, pages, permissions );
 
 		} else {
 			DBG_PRINTF( "unknown message %x\n", msg.type );
