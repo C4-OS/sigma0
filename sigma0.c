@@ -140,6 +140,39 @@ static inline bool is_bootinfo_fault( const message_t *msg ){
 	    && perms == PAGE_READ;
 }
 
+static inline bool is_object_grant( const message_t *msg ){
+	return msg->type == MESSAGE_TYPE_GRANT_OBJECT;
+}
+
+static void handle_page_request( int32_t responder, const message_t *msg ){
+	DBG_PRINTF( "request for %u pages with permissions %b\n",
+	            msg->data[1], msg->data[0] );
+
+	// TODO: two things, keep track of available memory, and check that
+	//       there is actually enough memory to satisfy the request
+	unsigned pages = msg->data[1];
+	int32_t page = allot_pages( pages );
+	//void *page = allot_pages( pages );
+	//void *page = NULL;
+	//void *addr = (void *)msg.data[0];
+	unsigned permissions = msg->data[0];
+	//unsigned long sender = msg.sender;
+	unsigned cap_permissions = CAP_MULTI_USE | CAP_SHARE;
+
+	// translate page flags into permissions
+	if ( permissions & PAGE_READ )  cap_permissions |= CAP_ACCESS;
+	if ( permissions & PAGE_WRITE ) cap_permissions |= CAP_MODIFY;
+	
+	if ( page <= 0 ){
+		DBG_PRINTF( "Got an error will trying to allocate %u pages!\n", pages );
+		// TODO: properly handle this, this will currently leave the requester
+		//       hanging while waiting for a response
+		return;
+	}
+	
+	c4_cspace_grant( page, responder, cap_permissions );
+}
+
 static void server( void *data ){
 	message_t msg;
 
@@ -162,20 +195,32 @@ static void server( void *data ){
 
 			//c4_dump_maps( msg.sender );
 
+		} else if ( is_object_grant( &msg )){
+			int32_t obj = msg.data[5];
+			message_t objmsg;
+
+			c4_msg_recieve( &objmsg, obj );
+
+			if ( is_page_request(&objmsg) ){
+				handle_page_request( obj, &objmsg );
+			}
+
+			/*
 		} else if ( is_page_request( &msg )){
-			DBG_PRINTF( "request for %u pages at %p\n",
-				msg.data[2], msg.data[0] );
+			DBG_PRINTF( "request for %u pages with permissions %b\n",
+				msg.data[1], msg.data[0] );
 
 			// TODO: two things, keep track of available memory, and check that
 			//       there is actually enough memory to satisfy the request
-			unsigned pages = msg.data[2];
+			unsigned pages = msg.data[1];
 			//void *page = allot_pages( pages );
-			void *page = NULL;
-			void *addr = (void *)msg.data[0];
+			//void *page = NULL;
+			//void *addr = (void *)msg.data[0];
 			unsigned permissions = msg.data[1];
 			unsigned long sender = msg.sender;
 
-			c4_mem_grant_to( sender, page, addr, pages, permissions );
+			//c4_mem_grant_to( sender, page, addr, pages, permissions );
+			*/
 
 		} else {
 			DBG_PRINTF( "unknown message %x\n", msg.type );
@@ -231,13 +276,17 @@ c4_process_t elf_load( Elf32_Ehdr *elf, int nameserver ){
 	int thread_id = c4_create_thread( entry, (void *)stack, 0 );
 	c4_debug_printf( "--- sigma0: made thread %u\n", thread_id );
 	BUGOUT(thread_id);
+
 	c4_set_addrspace( thread_id, aspace );
 	c4_set_capspace( thread_id, cspace );
 	c4_set_pager( thread_id, 1 );
-
 	int msgq = c4_msg_create_sync();
-	c4_cspace_copy( 0, msgq,       cspace, 1 );
-	c4_cspace_copy( 0, nameserver, cspace, 2 );
+
+	c4_cspace_copy( C4_CURRENT_CSPACE, msgq,         cspace, C4_SERV_PORT );
+	c4_cspace_copy( C4_CURRENT_CSPACE, nameserver,   cspace, C4_NAMESERVER );
+	c4_cspace_copy( C4_CURRENT_CSPACE, aspace,       cspace, C4_CURRENT_ADDRSPACE );
+	c4_cspace_copy( C4_CURRENT_CSPACE, C4_SERV_PORT, cspace, C4_PAGER );
+
 	c4_cspace_restrict( cspace, nameserver,
 	                    CAP_MODIFY | CAP_SHARE | CAP_MULTI_USE );
 
@@ -250,7 +299,7 @@ c4_process_t elf_load( Elf32_Ehdr *elf, int nameserver ){
 	BUGOUT(c4ret);
 	c4ret = c4_addrspace_map( aspace, frame, to_stack, PAGE_READ | PAGE_WRITE );
 	BUGOUT(c4ret);
-	elf_load_set_arg( (void *)from_stack, stack_offset, 0, 2 );
+	elf_load_set_arg( (void *)from_stack, stack_offset, 0, C4_NAMESERVER );
 	c4ret = c4_addrspace_unmap( 2, from_stack );
 	BUGOUT(c4ret);
 
@@ -276,7 +325,7 @@ c4_process_t elf_load( Elf32_Ehdr *elf, int nameserver ){
 		}
 
 		c4_addrspace_unmap( 2, databuf );
-		c4_cspace_move( 0, frame, cspace, i + 3 );
+		c4_cspace_move( 0, frame, cspace, i + C4_DEFAULT_OBJECT_END );
 
 		/*
 		c4_mem_grant_to( thread_id, databuf, adjaddr, pages,
