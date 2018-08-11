@@ -261,7 +261,7 @@ static inline void elf_load_set_arg( uint8_t *stack,
 c4_process_t elf_load( Elf32_Ehdr *elf, int nameserver ){
 	c4_process_t ret;
 
-	unsigned stack_offset = 0xff8;
+	unsigned stack_offset = 0xfe0;
 	int frame = allot_pages(1);
 	int cspace = c4_cspace_create();
 	int aspace = c4_addrspace_create();
