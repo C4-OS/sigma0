@@ -30,7 +30,6 @@ static void  bss_init( void );
 //static void *allot_pages( unsigned pages );
 static int32_t allot_pages( unsigned pages );
 static void  server( void *data );
-static void  test_thread( void );
 
 void main( void ){
 	struct foo thing;
@@ -38,7 +37,6 @@ void main( void ){
 	// set the memory in bss to zero, which is needed since this loaded
 	// as a flat binary
 	bss_init( );
-	int ret = 0;
 	message_t msg;
 
 	do {
@@ -93,21 +91,6 @@ void main( void ){
 	// TODO: panic or dump debug info or something, server()
 	//       should never return
 	for ( ;; );
-}
-
-static void test_thread( void ){
-	message_t msg = {
-		.type = 123456,
-		.data = {1, 2, 3, 4, 5},
-	};
-
-	*(volatile unsigned *)0 = 1234;
-
-	c4_msg_send( &msg, 1 );
-	//DBG_PRINTF( "got here man, %u\n", 123 );
-	c4_debug_printf( "--- sigma0: testing this\n" );
-	//for (;;);
-	c4_exit();
 }
 
 static inline bool is_page_fault( const message_t *msg ){
@@ -168,16 +151,10 @@ static void handle_page_request( int32_t responder, const message_t *msg ){
 static void server( void *data ){
 	message_t msg;
 
-	while ( true ){
-		c4_msg_recieve( &msg, 1 );
+	while (true) {
+		c4_msg_recieve(&msg, 1);
 
-		if ( is_bootinfo_fault( &msg )){
-			DBG_PRINTF( "bootinfo memory request from %u\n", msg.sender );
-			c4_mem_map_to( msg.sender, BOOTINFO_ADDR, BOOTINFO_ADDR,
-			               1, PAGE_READ );
-			c4_continue_thread( msg.sender );
-
-		} else if ( is_page_fault( &msg )){
+		if (is_page_fault(&msg)) {
 			c4_debug_printf(
 				"--- sigma0: unhandled page fault: thread %u, %s %p, ip=%p\n",
 				msg.sender,
@@ -185,34 +162,15 @@ static void server( void *data ){
 				msg.data[0], msg.data[1]
 			);
 
-			//c4_dump_maps( msg.sender );
-
-		} else if ( is_object_grant( &msg )){
+		} else if (is_object_grant(&msg)) {
 			int32_t obj = msg.data[5];
 			message_t objmsg;
 
-			c4_msg_recieve( &objmsg, obj );
+			c4_msg_recieve(&objmsg, obj);
 
-			if ( is_page_request(&objmsg) ){
-				handle_page_request( obj, &objmsg );
+			if (is_page_request(&objmsg)) {
+				handle_page_request(obj, &objmsg);
 			}
-
-			/*
-		} else if ( is_page_request( &msg )){
-			DBG_PRINTF( "request for %u pages with permissions %b\n",
-				msg.data[1], msg.data[0] );
-
-			// TODO: two things, keep track of available memory, and check that
-			//       there is actually enough memory to satisfy the request
-			unsigned pages = msg.data[1];
-			//void *page = allot_pages( pages );
-			//void *page = NULL;
-			//void *addr = (void *)msg.data[0];
-			unsigned permissions = msg.data[1];
-			unsigned long sender = msg.sender;
-
-			//c4_mem_grant_to( sender, page, addr, pages, permissions );
-			*/
 
 		} else {
 			DBG_PRINTF( "unknown message %x\n", msg.type );
