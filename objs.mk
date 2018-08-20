@@ -3,7 +3,7 @@ ALL_CLEAN += sigma0-clean
 SIGMA0_INCLUDE = -Isigma0/include/
 SIGMA0_CFLAGS  = $(C4_CFLAGS) -fpic $(SIGMA0_INCLUDE)
 
-sig-objs = sigma0/sigma0.o sigma0/tar.o sigma0/elf.o sigma0/initfs.o
+sig-objs = sigma0/sigma0.o sigma0/tar.o sigma0/initfs.o
 sig-libs = $(BUILD)/libs/c4rt.a
 
 sigma0/%.o: sigma0/%.c
