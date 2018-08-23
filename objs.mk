@@ -1,14 +1,15 @@
 ALL_CLEAN += sigma0-clean
 
 SIGMA0_INCLUDE = -Isigma0/include/
-SIGMA0_CFLAGS  = $(C4_CFLAGS) -fpic $(SIGMA0_INCLUDE)
+SIGMA0_CFLAGS  = -ffreestanding \
+				 -nostartfiles -fpic $(SIGMA0_INCLUDE) $(C4_CFLAGS)
 
 sig-objs = sigma0/sigma0.o sigma0/tar.o sigma0/initfs.o
-sig-libs = $(BUILD)/libs/c4rt.a
+sig-libs = $(BUILD)/lib/libc.a
 
 sigma0/%.o: sigma0/%.c
 	@echo CC $< -c -o $@
-	@$(C4_CC) $(SIGMA0_CFLAGS) $< -c -o $@
+	@$(C4_CC) $< -c -o $@ $(SIGMA0_CFLAGS) 
 
 sigma0/initfs.o: $(BUILD)/initfs.tar
 	@echo LD *.tar -o $@.tmp.o
@@ -21,8 +22,8 @@ sigma0/initfs.o: $(BUILD)/initfs.tar
 	@rm $@.tmp.o
 
 $(BUILD)/sigma0-$(ARCH).elf: $(sig-objs)
-	@$(C4_CC) $(SIGMA0_CFLAGS) -T sigma0/linker.ld \
-		$(sig-objs) $(sig-libs) -o $@
+	@$(C4_CC) -T sigma0/linker.ld \
+		-o $@ $(sig-objs) $(sig-libs) $(SIGMA0_CFLAGS) 
 
 $(BUILD)/c4-$(ARCH)-sigma0: $(BUILD)/sigma0-$(ARCH).elf
 	@echo OBJCOPY $< $@

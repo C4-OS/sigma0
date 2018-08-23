@@ -31,7 +31,13 @@ static void  bss_init( void );
 static int32_t allot_pages( unsigned pages );
 static void  server( void *data );
 
-void main( void ){
+// XXX: avoid using the libc _start()
+void main(void);
+void _start(void){
+	main();
+}
+
+void main(void){
 	struct foo thing;
 
 	// set the memory in bss to zero, which is needed since this loaded
