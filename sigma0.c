@@ -202,10 +202,15 @@ static int32_t allot_pages( unsigned pages ){
 }
 
 static c4_process_t do_elf_load(void *data, int nameserver) {
-	char *args[] = {NULL,};
+	// XXX: add --no-forward argument for all processes started by sigma0,
+	//      to ensure nameserver gets it as an argument
+	//
+	// TODO: an init script system, so all this can be configured
+	const char *argv[] = {"[unknown]", "--no-forward", NULL};
+	const char *envp[] = {NULL,};
 
 	return elf_load_full(data, allot_pages, nameserver,
-	                     C4_SERV_PORT, args, args);
+	                     C4_SERV_PORT, argv, envp);
 }
 
 c4_process_t elf_load_file( const char *name, int nameserver ){
